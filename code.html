@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Alchemist's Dungeon</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
@@ -138,6 +139,27 @@
             opacity: 0.9;
             text-shadow: 2px 2px 0 #4a148c, 0 0 8px #ffbf00;
             z-index: 10;
+            display: flex;
+            align-items: center;
+        }
+
+        #soundToggle {
+            background: none;
+            border: 2px solid #ffd700;
+            color: #ffd700;
+            font-family: 'Press Start 2P', cursive;
+            margin-left: 15px;
+            padding: 5px 8px;
+            cursor: pointer;
+            text-shadow: 1px 1px 0 #4a148c;
+            box-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
+            transition: all 0.2s ease;
+        }
+
+        #soundToggle:hover {
+            background: #ffd700;
+            color: #4a148c;
+            text-shadow: none;
         }
 
         .bar {
@@ -204,7 +226,8 @@
             </div>
             
             <div class="controls">
-                WASD: Move | SPACE: Jump
+                <span>WASD: Move | SPACE: Jump</span>
+                <button id="soundToggle">SOUND ON</button>
             </div>
         </div>
     </main>
@@ -219,11 +242,43 @@
     </div>
     
     <script>
+        let generationAttempts = 0;
+        const MAX_GEN_ATTEMPTS = 20;
+
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         
         const minimapCanvas = document.getElementById('minimap');
         const minimapCtx = minimapCanvas.getContext('2d');
+
+        // Sound Manager
+        const soundManager = {
+            isMuted: false,
+            sounds: {
+                music: new Howl({
+                    src: ['assets/audio/music.wav'],
+                    loop: true,
+                    volume: 0.07
+                }),
+                jump: new Howl({ src: ['assets/audio/jump.wav'], volume: 0.4 }),
+                land: new Howl({ src: ['assets/audio/land.wav'], volume: 0.3 }),
+                gem: new Howl({ src: ['assets/audio/gem.wav'], volume: 0.1 }),
+                hurt: new Howl({ src: ['assets/audio/hurt.wav'], volume: 0.2 }),
+                spike: new Howl({ src: ['assets/audio/spike.wav'], volume: 0.6 }),
+                win: new Howl({ src: ['assets/audio/win.wav'], volume: 0.7 }),
+                gameOver: new Howl({ src: ['assets/audio/gameOver.wav'], volume: 0.7 }),
+            },
+            play: function(soundName) {
+                if (!this.isMuted && this.sounds[soundName]) {
+                    this.sounds[soundName].play();
+                }
+            },
+            toggleMute: function() {
+                this.isMuted = !this.isMuted;
+                Howler.mute(this.isMuted);
+                document.getElementById('soundToggle').textContent = this.isMuted ? 'SOUND OFF' : 'SOUND ON';
+            }
+        };
 
         // Game constants
         const NATIVE_WIDTH = 800;
@@ -323,8 +378,59 @@
 
         window.addEventListener('resize', resizeGame);
 
+        function findReachableTiles(level, levelWidth, levelHeight, startX, startY) {
+            const reachable = new Set();
+            const queue = [[startX, startY]];
+            const visited = new Set([`${startX},${startY}`]);
+            const JUMP_HEIGHT = 4; // Player can jump ~4 tiles high
+
+            while (queue.length > 0) {
+                const [x, y] = queue.shift();
+                reachable.add(`${x},${y}`);
+
+                // 1. Walk left/right (with air control)
+                for (const nx of [x - 1, x + 1]) {
+                    if (nx >= 0 && nx < levelWidth && level[y][nx] === 0 && !visited.has(`${nx},${y}`)) {
+                        visited.add(`${nx},${y}`);
+                        queue.push([nx, y]);
+                    }
+                }
+
+                // 2. Fall
+                const nyDown = y + 1;
+                if (nyDown < levelHeight && level[nyDown][x] === 0 && !visited.has(`${x},${nyDown}`)) {
+                    visited.add(`${x},${nyDown}`);
+                    queue.push([x, nyDown]);
+                }
+
+                // 3. Jump from ground
+                const onGround = (y + 1 < levelHeight && level[y + 1][x] === 1);
+                if (onGround) {
+                    for (let i = 1; i <= JUMP_HEIGHT; i++) {
+                        const nyUp = y - i;
+                        if (nyUp >= 0 && level[nyUp][x] === 0) {
+                            if (!visited.has(`${x},${nyUp}`)) {
+                                visited.add(`${x},${nyUp}`);
+                                queue.push([x, nyUp]);
+                            }
+                        } else {
+                            break; // Hit a ceiling
+                        }
+                    }
+                }
+            }
+            return reachable;
+        }
+
         // Procedural dungeon generation
         function generateDungeon() {
+            if (generationAttempts >= MAX_GEN_ATTEMPTS) {
+                console.error("Failed to generate a valid dungeon. Please refresh.");
+                // In a real-world scenario, you might load a default, safe level here.
+                return;
+            }
+            generationAttempts++;
+
             const { levelWidth, levelHeight } = gameState;
             const level = Array(levelHeight).fill().map(() => Array(levelWidth).fill(0));
             
@@ -360,6 +466,15 @@
             }
 
             gameState.level = level;
+
+            // --- Reachability Analysis ---
+            const reachableSet = findReachableTiles(level, levelWidth, levelHeight, playerSpawnX, playerSpawnY);
+            const reachableTiles = Array.from(reachableSet).map(s => s.split(',').map(Number));
+
+            // If the reachable area is too small, the level is likely broken.
+            if (reachableTiles.length < (levelWidth * levelHeight) / 10) {
+                return generateDungeon();
+            }
             
             // Set minimap dimensions
             minimapCanvas.width = levelWidth * MINIMAP_SCALE;
@@ -381,88 +496,85 @@
                 }
             }
 
+            // Find all reachable ground tiles for placing enemies and spikes
+            const reachableGroundTiles = reachableTiles.filter(([x, y]) => 
+                y + 1 < levelHeight && level[y + 1][x] === 1
+            );
+            
+            const candidateSpawns = reachableGroundTiles.filter(([x, y]) => {
+                const distance = Math.sqrt(Math.pow(x - playerSpawnX, 2) + Math.pow(y - playerSpawnY, 2));
+                return distance > safeZoneRadius;
+            });
+
+            // Shuffle candidate spawn locations
+            for (let i = candidateSpawns.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [candidateSpawns[i], candidateSpawns[j]] = [candidateSpawns[j], candidateSpawns[i]];
+            }
+            
+            const numEnemies = 5;
+            const numSpikes = 8;
+            if (candidateSpawns.length < numEnemies + numSpikes) {
+                return generateDungeon(); // Not enough safe spots, regenerate
+            }
+            
             // Place enemies
             gameState.enemies = [];
-            for (let i = 0; i < 5; i++) {
-                let placed = false;
-                while (!placed) {
-                    const x = Math.floor(Math.random() * (levelWidth - 2)) + 1;
-                    const y = Math.floor(Math.random() * (levelHeight - 3)) + 1;
-                    
-                    if (level[y][x] === 0 && level[y + 1][x] === 1) {
-                        const distance = Math.sqrt(Math.pow(x - playerSpawnX, 2) + Math.pow(y - playerSpawnY, 2));
-                        if(distance > safeZoneRadius) {
-                            gameState.enemies.push({
-                                x: x * TILE_SIZE,
-                                y: y * TILE_SIZE,
-                                width: 24,
-                                height: 24,
-                                vx: ENEMY_SPEED * (Math.random() > 0.5 ? 1 : -1)
-                            });
-                            placed = true;
-                        }
-                    }
-                }
-            }
+            const enemySpawns = candidateSpawns.splice(0, numEnemies);
+            enemySpawns.forEach(([x, y]) => {
+                gameState.enemies.push({
+                    x: x * TILE_SIZE,
+                    y: y * TILE_SIZE,
+                    width: 24,
+                    height: 24,
+                    vx: ENEMY_SPEED * (Math.random() > 0.5 ? 1 : -1)
+                });
+            });
 
             // Place spikes
             gameState.spikes = [];
-            for (let i = 0; i < 8; i++) {
-                let placed = false;
-                while (!placed) {
-                    const x = Math.floor(Math.random() * (levelWidth - 2)) + 1;
-                    const y = Math.floor(Math.random() * (levelHeight - 3)) + 1;
-                    
-                    if (level[y][x] === 0 && level[y + 1][x] === 1) {
-                        const distance = Math.sqrt(Math.pow(x - playerSpawnX, 2) + Math.pow(y - playerSpawnY, 2));
-                        if(distance > safeZoneRadius) {
-                            gameState.spikes.push({
-                                x: x * TILE_SIZE,
-                                y: (y + 1) * TILE_SIZE - 16,
-                                width: TILE_SIZE,
-                                height: 16
-                            });
-                            placed = true;
-                        }
-                    }
-                }
-            }
+            const spikeSpawns = candidateSpawns.splice(0, numSpikes);
+             spikeSpawns.forEach(([x, y]) => {
+                gameState.spikes.push({
+                    x: x * TILE_SIZE,
+                    y: (y + 1) * TILE_SIZE - 16,
+                    width: TILE_SIZE,
+                    height: 16
+                });
+            });
 
             // Place gems
             gameState.gems = [];
-            for (let i = 0; i < 10; i++) {
-                let placed = false;
-                while (!placed) {
-                    const x = Math.floor(Math.random() * (levelWidth - 2)) + 1;
-                    const y = Math.floor(Math.random() * (levelHeight - 2)) + 1;
-                    
-                    if (level[y][x] === 0) {
-                        let isSpikeLocation = false;
-                        for (const spike of gameState.spikes) {
-                            const spikeTileX = spike.x / TILE_SIZE;
-                            const spikeTileY = Math.floor(spike.y / TILE_SIZE);
-                            if (spikeTileX === x && spikeTileY === y) {
-                                isSpikeLocation = true;
-                                break;
-                            }
-                        }
-
-                        if (!isSpikeLocation) {
-                            gameState.gems.push({
-                                x: x * TILE_SIZE + TILE_SIZE/2,
-                                y: y * TILE_SIZE + TILE_SIZE/2,
-                                collected: false,
-                                bobOffset: Math.random() * Math.PI * 2
-                            });
-                            placed = true;
-                        }
-                    }
-                }
+            const numGems = 10;
+            const gemCandidateTiles = reachableTiles.filter(([x, y]) => {
+                 // Ensure gems don't spawn in the same tile as a spike or enemy origin
+                 return ![...enemySpawns, ...spikeSpawns].some(spawn => spawn[0] === x && spawn[1] === y);
+            });
+            
+            if (gemCandidateTiles.length < numGems) {
+                return generateDungeon(); // Not enough spots for gems
             }
+
+            for (let i = gemCandidateTiles.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [gemCandidateTiles[i], gemCandidateTiles[j]] = [gemCandidateTiles[j], gemCandidateTiles[i]];
+            }
+
+            const gemSpawns = gemCandidateTiles.slice(0, numGems);
+            gemSpawns.forEach(([x, y]) => {
+                gameState.gems.push({
+                    x: x * TILE_SIZE + TILE_SIZE/2,
+                    y: y * TILE_SIZE + TILE_SIZE/2,
+                    collected: false,
+                    bobOffset: Math.random() * Math.PI * 2
+                });
+            });
 
             // Set player start position
             gameState.player.x = playerSpawnX * TILE_SIZE;
             gameState.player.y = playerSpawnY * TILE_SIZE;
+
+            generationAttempts = 0; // Success!
         }
 
         // Collision detection
@@ -612,6 +724,7 @@
                 player.vy = JUMP_FORCE;
                 player.onGround = false;
                 player.jumpSquash = 1.5;
+                soundManager.play('jump');
                 
                 // Jump particles
                 for (let i = 0; i < 5; i++) {
@@ -642,6 +755,7 @@
                     // Top collision
                     if (player.vy > 0 && player.y + player.height - player.vy < platform.y + 1) {
                         if (!wasOnGround) {
+                            soundManager.play('land');
                             player.jumpSquash = 0.6;
                             // Landing particles
                             for (let i = 0; i < 3; i++) {
@@ -713,6 +827,8 @@
                     document.getElementById('healthFill').style.width = 
                         (player.health / player.maxHealth * 100) + '%';
                     
+                    soundManager.play('hurt');
+                    
                     // Knockback
                     player.vx = (player.x < enemy.x ? -8 : 8);
                     player.vy = -5;
@@ -733,6 +849,8 @@
                     if (player.health <= 0) {
                         document.getElementById('gameOver').style.display = 'block';
                         gameState.status = 'gameOver';
+                        soundManager.sounds.music.stop();
+                        soundManager.play('gameOver');
                     }
                 }
             });
@@ -743,11 +861,14 @@
                     { x: gem.x - 10, y: gem.y - 10, width: 20, height: 20 })) {
                     gameState.score += 1;
                     document.getElementById('score').textContent = gameState.score;
+                    soundManager.play('gem');
                     
                     // Check for win condition
                     if (gameState.gems.length === 1) { // This is the last gem
                         gameState.status = 'won';
                         document.getElementById('gameWon').style.display = 'block';
+                        soundManager.sounds.music.stop();
+                        soundManager.play('win');
                     }
 
                     // Collection particles
@@ -774,6 +895,7 @@
 
                     // Check for collision and if the player is landing on top of the spike
                     if (player.vy >= 0 && playerPrevBottom <= spike.y + 1) {
+                        soundManager.play('spike');
                         resetLevel();
                     } 
                     // If not landing on top, treat as a solid wall from the sides
@@ -834,11 +956,13 @@
             document.getElementById('gameOver').style.display = 'none';
             document.getElementById('gameWon').style.display = 'none';
             
+            generationAttempts = 0;
             gameState.status = 'playing';
             gameState.score = 0;
             document.getElementById('score').textContent = '0';
             generateDungeon();
             resetLevel();
+            soundManager.sounds.music.play();
         }
 
         // Render game
@@ -998,8 +1122,17 @@
         gameLoop();
 
         document.getElementById('startGameBtn').addEventListener('click', () => {
+            // Unlock audio context on user interaction
+            if (Howler.ctx && Howler.ctx.state === 'suspended') {
+                Howler.ctx.resume();
+            }
             document.getElementById('startScreen').classList.add('hidden');
             gameState.status = 'playing';
+            soundManager.play('music');
+        });
+
+        document.getElementById('soundToggle').addEventListener('click', () => {
+            soundManager.toggleMute();
         });
 
         const bgCanvas = document.getElementById('backgroundCanvas');
