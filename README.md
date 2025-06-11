@@ -2,8 +2,7 @@
 
 A retro-style, desktop-focused platformer game built with pure Vanilla JavaScript, HTML, and CSS, styled with Tailwind CSS for a modern UI polish. All assets and logic are contained within a single HTML file, making it a portable and impressive showcase of web development skills.
 
-![Alchemist's Dungeon Screenshot](https://i.imgur.com/your-screenshot-url.png) 
-*Note: You will need to take a screenshot of the game and replace the URL above.*
+![Alchemist's Dungeon Screenshot](https://github.com/user-attachments/assets/0baca747-06a9-49c5-901d-d5042b255094) 
 
 ## Features
 
@@ -28,7 +27,7 @@ A retro-style, desktop-focused platformer game built with pure Vanilla JavaScrip
 ## How to Play
 
 1.  Clone or download this repository.
-2.  Open the `golden.html` file in any modern web browser.
+2.  Open the `code.html` file in any modern web browser.
 3.  Use **WASD** to move and the **Spacebar** to jump.
 
 ## Tech Stack
