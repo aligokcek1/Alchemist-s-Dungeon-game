@@ -59,6 +59,8 @@
             position: absolute;
             top: 15px;
             right: 15px;
+            width: 150px;
+            height: 100px;
             border: 3px solid #ffd700;
             background: rgba(13, 5, 21, 0.85);
             box-shadow: 0 0 15px rgba(255, 215, 0, 0.6), inset 0 0 10px rgba(255, 215, 0, 0.3);
@@ -143,20 +145,21 @@
             align-items: center;
         }
 
-        #soundToggle {
+        .sound-toggle-btn {
             background: none;
             border: 2px solid #ffd700;
             color: #ffd700;
             font-family: 'Press Start 2P', cursive;
-            margin-left: 15px;
+            margin-left: 10px;
             padding: 5px 8px;
             cursor: pointer;
             text-shadow: 1px 1px 0 #4a148c;
             box-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
             transition: all 0.2s ease;
+            font-size: 10px;
         }
 
-        #soundToggle:hover {
+        .sound-toggle-btn:hover {
             background: #ffd700;
             color: #4a148c;
             text-shadow: none;
@@ -289,6 +292,7 @@
                 spike: new Howl({ src: ['assets/audio/spike.wav'], volume: 0.6 }),
                 win: new Howl({ src: ['assets/audio/win.wav'], volume: 0.7 }),
                 gameOver: new Howl({ src: ['assets/audio/gameOver.wav'], volume: 0.7 }),
+                potion: new Howl({ src: ['assets/audio/potion.wav'], volume: 0.5 }),
             },
             play: function(soundName) {
                 const sound = this.sounds[soundName];
@@ -365,6 +369,7 @@
             spikes: [],
             platforms: [],
             particles: [],
+            potions: [],
             score: 0,
             camera: { x: 0, y: 0 },
             keys: {},
@@ -583,34 +588,51 @@
                 });
             });
 
-            // Second pass: With spikes in place, find all truly reachable tiles for gems
+            // Second pass: With spikes in place, find all truly reachable tiles for items
             const spikeLocations = new Set(gameState.spikes.map(s => {
                 const x = s.x / TILE_SIZE;
-                const y = Math.floor(s.y / TILE_SIZE);
+                const y = Math.floor((s.y + s.height / 2) / TILE_SIZE);
                 return `${x},${y}`;
             }));
             const finalReachableSet = findReachableTiles(level, levelWidth, levelHeight, playerSpawnX, playerSpawnY, spikeLocations);
 
-            // Place gems
-            gameState.gems = [];
-            const numGems = 10;
-            const gemCandidateTiles = Array.from(finalReachableSet)
+            let candidateTiles = Array.from(finalReachableSet)
                 .map(s => s.split(',').map(Number))
                 .filter(([x, y]) => {
-                 // Ensure gems don't spawn in the same tile as a spike or enemy origin
-                 return ![...enemySpawns, ...spikeSpawns].some(spawn => spawn[0] === x && spawn[1] === y);
-            });
-            
-            if (gemCandidateTiles.length < numGems) {
-                return generateDungeon(); // Not enough spots for gems
-            }
+                    // Prevent items from spawning on player's start tile
+                    if (x === playerSpawnX && y === playerSpawnY) {
+                        return false;
+                    }
+                    // Ensure items don't spawn in the same tile as a spike or enemy origin
+                    return ![...enemySpawns, ...spikeSpawns].some(spawn => spawn[0] === x && spawn[1] === y);
+                });
 
-            for (let i = gemCandidateTiles.length - 1; i > 0; i--) {
+            // Shuffle candidate tiles
+            for (let i = candidateTiles.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
-                [gemCandidateTiles[i], gemCandidateTiles[j]] = [gemCandidateTiles[j], gemCandidateTiles[i]];
+                [candidateTiles[i], candidateTiles[j]] = [candidateTiles[j], candidateTiles[i]];
             }
 
-            const gemSpawns = gemCandidateTiles.slice(0, numGems);
+            const numGems = 10;
+            const numPotions = Math.floor(Math.random() * 2) + 1; // 1 or 2
+            if (candidateTiles.length < numGems + numPotions) {
+                return generateDungeon(); // Not enough spots for items
+            }
+
+            // Place Potions
+            gameState.potions = [];
+            const potionSpawns = candidateTiles.splice(0, numPotions);
+            potionSpawns.forEach(([x, y]) => {
+                gameState.potions.push({
+                    x: x * TILE_SIZE,
+                    y: y * TILE_SIZE,
+                    bobOffset: Math.random() * Math.PI * 2
+                });
+            });
+
+            // Place gems
+            gameState.gems = [];
+            const gemSpawns = candidateTiles.slice(0, numGems);
             gemSpawns.forEach(([x, y]) => {
                 gameState.gems.push({
                     x: x * TILE_SIZE + TILE_SIZE/2,
@@ -734,6 +756,29 @@
                 ctx.closePath();
                 ctx.fill();
             }
+        }
+
+        function drawPotion(x, y, bobOffset) {
+            const bob = Math.sin(Date.now() * 0.003 + bobOffset) * 3;
+            ctx.save();
+            ctx.translate(x + TILE_SIZE / 2, y + TILE_SIZE / 2 + bob);
+
+            // Potion liquid
+            ctx.fillStyle = '#ff69b4'; // Hot Pink
+            ctx.beginPath();
+            ctx.arc(0, 0, 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Flask
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Stopper
+            ctx.fillStyle = '#8B4513'; // Saddle Brown
+            ctx.fillRect(-4, -12, 8, 4);
+
+            ctx.restore();
         }
 
         // Update game logic
@@ -905,6 +950,30 @@
                 }
             });
             
+            // Collect potions
+            gameState.potions = gameState.potions.filter(potion => {
+                if (checkCollision(player, { x: potion.x, y: potion.y, width: TILE_SIZE, height: TILE_SIZE })) {
+                    player.health = Math.min(player.maxHealth, player.health + 50);
+                    document.getElementById('healthFill').style.width = 
+                        (player.health / player.maxHealth * 100) + '%';
+                    
+                    soundManager.play('potion');
+
+                    // Healing particles
+                    for (let i = 0; i < 15; i++) {
+                        createParticle(
+                            player.x + player.width/2,
+                            player.y + player.height/2,
+                            '#ff69b4',
+                            (Math.random() - 0.5) * 6,
+                            (Math.random() - 0.5) * 6 - 2
+                        );
+                    }
+                    return false; // remove potion
+                }
+                return true;
+            });
+            
             // Collect gems
             gameState.gems = gameState.gems.filter(gem => {
                 if (!gem.collected && checkCollision(player, 
@@ -1060,6 +1129,11 @@
                 ctx.fillStyle = colors.stoneGray;
             });
             
+            // Draw potions
+            gameState.potions.forEach(potion => {
+                drawPotion(potion.x, potion.y, potion.bobOffset);
+            });
+            
             // Draw spikes
             gameState.spikes.forEach(spike => {
                 drawSpike(spike.x, spike.y);
@@ -1147,7 +1221,17 @@
                     2, 2
                 );
             });
-
+            
+            // Draw potions
+            minimapCtx.fillStyle = '#ff69b4'; // Hot Pink
+            gameState.potions.forEach(potion => {
+                minimapCtx.fillRect(
+                    (potion.x / TILE_SIZE) * MINIMAP_SCALE - 1,
+                    (potion.y / TILE_SIZE) * MINIMAP_SCALE - 1,
+                    3, 3
+                );
+            });
+            
             // Draw camera view
             minimapCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
             minimapCtx.lineWidth = 2;
