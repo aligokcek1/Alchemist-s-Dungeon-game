@@ -6,14 +6,17 @@ A retro-style, desktop-focused platformer game built with pure Vanilla JavaScrip
 
 ## Features
 
-- **Procedurally Generated Dungeons:** Every playthrough is a new experience with a unique, algorithmically generated dungeon layout.
+- **Advanced Procedural Generation:** Every playthrough features a unique, algorithmically generated dungeon. The generation logic includes a reachability analysis to ensure every level is winnable and fair.
+- **Rich Audio Experience:**
+    - Background music to set a retro, mysterious tone.
+    - Sound effects (SFX) for jumping, landing, collecting items, taking damage, and more.
+    - Separate UI controls to mute music and SFX independently.
 - **Dynamic Player Character:** A pixel-art alchemist character with fluid animations for idling, running, jumping, and landing (squash-and-stretch).
-- **Intelligent Enemy AI:** Patrolling enemies that can detect and avoid walls and ledges.
 - **Engaging Gameplay Loop:**
     - Collect all the gems to win the game.
-    - Avoid spike traps and enemies.
-    - Health bar UI tracks player damage.
-    - Game pauses on "Game Over" or "You Won" screens.
+    - Pick up **Health Potions** to restore health and survive longer.
+    - Avoid spike traps and intelligent, patrolling enemies.
+    - Game pauses on "Game Over" or "You Won" screens with unique audio cues.
 - **Polished User Experience:**
     - A sleek, animated loading screen on first launch.
     - An instruction screen before the game starts.
@@ -21,17 +24,26 @@ A retro-style, desktop-focused platformer game built with pure Vanilla JavaScrip
 - **Rich Visuals & Effects:**
     - Retro CRT screen effect and glowing "neon" text.
     - Screen shake effects on damage and level resets.
-    - A dynamic minimap that shows the entire dungeon, the player's position, and the current camera view.
-    - A particle system for jump effects, damage indicators, and gem collection.
+    - A dynamic minimap that shows the entire dungeon, the player's position, and key items.
+    - A particle system for jump effects, damage indicators, and item collection.
 
 ## How to Play
 
+**Important:** Because this game loads local audio files, you must run it from a local web server due to browser security policies.
+
 1.  Clone or download this repository.
-2.  Open the `code.html` file in any modern web browser.
-3.  Use **WASD** to move and the **Spacebar** to jump.
+2.  Make sure you have all the sound files in the `assets/audio` directory.
+3.  From the root directory of the project, start a local web server. If you have Python installed, you can run:
+    ```bash
+    # For Python 3
+    python -m http.server
+    ```
+4.  Open your browser and navigate to `http://localhost:8000/code.html`.
+5.  Use **WASD** to move and the **Spacebar** to jump.
 
 ## Tech Stack
 
 - **Core Game:** Vanilla HTML, CSS, and JavaScript.
+- **Audio:** Howler.js for robust sound and music management.
 - **Styling:** Tailwind CSS for the UI elements outside the game screen.
 - **Font:** "Press Start 2P" from Google Fonts. 
