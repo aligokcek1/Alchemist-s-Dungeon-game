@@ -59,6 +59,8 @@
             position: absolute;
             top: 15px;
             right: 15px;
+            width: 150px;
+            height: 100px;
             border: 3px solid #ffd700;
             background: rgba(13, 5, 21, 0.85);
             box-shadow: 0 0 15px rgba(255, 215, 0, 0.6), inset 0 0 10px rgba(255, 215, 0, 0.3);
@@ -143,20 +145,21 @@
             align-items: center;
         }
 
-        #soundToggle {
+        .sound-toggle-btn {
             background: none;
             border: 2px solid #ffd700;
             color: #ffd700;
             font-family: 'Press Start 2P', cursive;
-            margin-left: 15px;
+            margin-left: 10px;
             padding: 5px 8px;
             cursor: pointer;
             text-shadow: 1px 1px 0 #4a148c;
             box-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
             transition: all 0.2s ease;
+            font-size: 10px;
         }
 
-        #soundToggle:hover {
+        .sound-toggle-btn:hover {
             background: #ffd700;
             color: #4a148c;
             text-shadow: none;
@@ -227,7 +230,8 @@
             
             <div class="controls">
                 <span>WASD: Move | SPACE: Jump</span>
-                <button id="soundToggle">SOUND ON</button>
+                <button id="musicToggle" class="sound-toggle-btn">MUSIC ON</button>
+                <button id="sfxToggle" class="sound-toggle-btn">SFX ON</button>
             </div>
         </div>
     </main>
@@ -253,7 +257,8 @@
 
         // Sound Manager
         const soundManager = {
-            isMuted: false,
+            isMusicMuted: false,
+            isSfxMuted: false,
             sounds: {
                 music: new Howl({
                     src: ['assets/audio/music.wav'],
@@ -267,16 +272,37 @@
                 spike: new Howl({ src: ['assets/audio/spike.wav'], volume: 0.6 }),
                 win: new Howl({ src: ['assets/audio/win.wav'], volume: 0.7 }),
                 gameOver: new Howl({ src: ['assets/audio/gameOver.wav'], volume: 0.7 }),
+                potion: new Howl({ src: ['assets/audio/potion.wav'], volume: 0.5 }),
             },
             play: function(soundName) {
-                if (!this.isMuted && this.sounds[soundName]) {
-                    this.sounds[soundName].play();
+                const sound = this.sounds[soundName];
+                if (!sound) return;
+
+                const isMusic = soundName === 'music';
+
+                if (isMusic) {
+                    if (!this.isMusicMuted && !sound.playing()) {
+                         sound.play();
+                    }
+                } else {
+                    if (!this.isSfxMuted) {
+                        sound.play();
+                    }
                 }
             },
-            toggleMute: function() {
-                this.isMuted = !this.isMuted;
-                Howler.mute(this.isMuted);
-                document.getElementById('soundToggle').textContent = this.isMuted ? 'SOUND OFF' : 'SOUND ON';
+            stop: function(soundName) {
+                if (this.sounds[soundName]) {
+                    this.sounds[soundName].stop();
+                }
+            },
+            toggleMusicMute: function() {
+                this.isMusicMuted = !this.isMusicMuted;
+                this.sounds.music.mute(this.isMusicMuted);
+                document.getElementById('musicToggle').textContent = this.isMusicMuted ? 'MUSIC OFF' : 'MUSIC ON';
+            },
+            toggleSfxMute: function() {
+                this.isSfxMuted = !this.isSfxMuted;
+                document.getElementById('sfxToggle').textContent = this.isSfxMuted ? 'SFX OFF' : 'SFX ON';
             }
         };
 
@@ -323,6 +349,7 @@
             spikes: [],
             platforms: [],
             particles: [],
+            potions: [],
             score: 0,
             camera: { x: 0, y: 0 },
             keys: {},
@@ -378,7 +405,7 @@
 
         window.addEventListener('resize', resizeGame);
 
-        function findReachableTiles(level, levelWidth, levelHeight, startX, startY) {
+        function findReachableTiles(level, levelWidth, levelHeight, startX, startY, spikeLocations = new Set()) {
             const reachable = new Set();
             const queue = [[startX, startY]];
             const visited = new Set([`${startX},${startY}`]);
@@ -390,7 +417,7 @@
 
                 // 1. Walk left/right (with air control)
                 for (const nx of [x - 1, x + 1]) {
-                    if (nx >= 0 && nx < levelWidth && level[y][nx] === 0 && !visited.has(`${nx},${y}`)) {
+                    if (nx >= 0 && nx < levelWidth && level[y][nx] === 0 && !visited.has(`${nx},${y}`) && !spikeLocations.has(`${nx},${y}`)) {
                         visited.add(`${nx},${y}`);
                         queue.push([nx, y]);
                     }
@@ -398,7 +425,7 @@
 
                 // 2. Fall
                 const nyDown = y + 1;
-                if (nyDown < levelHeight && level[nyDown][x] === 0 && !visited.has(`${x},${nyDown}`)) {
+                if (nyDown < levelHeight && level[nyDown][x] === 0 && !visited.has(`${x},${nyDown}`) && !spikeLocations.has(`${x},${nyDown}`)) {
                     visited.add(`${x},${nyDown}`);
                     queue.push([x, nyDown]);
                 }
@@ -408,13 +435,13 @@
                 if (onGround) {
                     for (let i = 1; i <= JUMP_HEIGHT; i++) {
                         const nyUp = y - i;
-                        if (nyUp >= 0 && level[nyUp][x] === 0) {
+                        if (nyUp >= 0 && level[nyUp][x] === 0 && !spikeLocations.has(`${x},${nyUp}`)) {
                             if (!visited.has(`${x},${nyUp}`)) {
                                 visited.add(`${x},${nyUp}`);
                                 queue.push([x, nyUp]);
                             }
                         } else {
-                            break; // Hit a ceiling
+                            break; // Hit a ceiling or a spike
                         }
                     }
                 }
@@ -467,15 +494,6 @@
 
             gameState.level = level;
 
-            // --- Reachability Analysis ---
-            const reachableSet = findReachableTiles(level, levelWidth, levelHeight, playerSpawnX, playerSpawnY);
-            const reachableTiles = Array.from(reachableSet).map(s => s.split(',').map(Number));
-
-            // If the reachable area is too small, the level is likely broken.
-            if (reachableTiles.length < (levelWidth * levelHeight) / 10) {
-                return generateDungeon();
-            }
-            
             // Set minimap dimensions
             minimapCanvas.width = levelWidth * MINIMAP_SCALE;
             minimapCanvas.height = levelHeight * MINIMAP_SCALE;
@@ -496,10 +514,17 @@
                 }
             }
 
+            // --- Reachability Analysis ---
+            // First pass: Find all spots reachable from spawn to place hazards on.
+            const initialReachableSet = findReachableTiles(level, levelWidth, levelHeight, playerSpawnX, playerSpawnY);
+            if (initialReachableSet.size < (levelWidth * levelHeight) / 10) {
+                return generateDungeon(); // Level is too fragmented or small.
+            }
+
             // Find all reachable ground tiles for placing enemies and spikes
-            const reachableGroundTiles = reachableTiles.filter(([x, y]) => 
-                y + 1 < levelHeight && level[y + 1][x] === 1
-            );
+            const reachableGroundTiles = Array.from(initialReachableSet)
+                .map(s => s.split(',').map(Number))
+                .filter(([x, y]) => y + 1 < levelHeight && level[y + 1][x] === 1);
             
             const candidateSpawns = reachableGroundTiles.filter(([x, y]) => {
                 const distance = Math.sqrt(Math.pow(x - playerSpawnX, 2) + Math.pow(y - playerSpawnY, 2));
@@ -518,6 +543,18 @@
                 return generateDungeon(); // Not enough safe spots, regenerate
             }
             
+            // Place spikes first, as they can block paths
+            gameState.spikes = [];
+            const spikeSpawns = candidateSpawns.splice(0, numSpikes);
+             spikeSpawns.forEach(([x, y]) => {
+                gameState.spikes.push({
+                    x: x * TILE_SIZE,
+                    y: (y + 1) * TILE_SIZE - 16,
+                    width: TILE_SIZE,
+                    height: 16
+                });
+            });
+
             // Place enemies
             gameState.enemies = [];
             const enemySpawns = candidateSpawns.splice(0, numEnemies);
@@ -531,36 +568,51 @@
                 });
             });
 
-            // Place spikes
-            gameState.spikes = [];
-            const spikeSpawns = candidateSpawns.splice(0, numSpikes);
-             spikeSpawns.forEach(([x, y]) => {
-                gameState.spikes.push({
+            // Second pass: With spikes in place, find all truly reachable tiles for items
+            const spikeLocations = new Set(gameState.spikes.map(s => {
+                const x = s.x / TILE_SIZE;
+                const y = Math.floor((s.y + s.height / 2) / TILE_SIZE);
+                return `${x},${y}`;
+            }));
+            const finalReachableSet = findReachableTiles(level, levelWidth, levelHeight, playerSpawnX, playerSpawnY, spikeLocations);
+
+            let candidateTiles = Array.from(finalReachableSet)
+                .map(s => s.split(',').map(Number))
+                .filter(([x, y]) => {
+                    // Prevent items from spawning on player's start tile
+                    if (x === playerSpawnX && y === playerSpawnY) {
+                        return false;
+                    }
+                    // Ensure items don't spawn in the same tile as a spike or enemy origin
+                    return ![...enemySpawns, ...spikeSpawns].some(spawn => spawn[0] === x && spawn[1] === y);
+                });
+
+            // Shuffle candidate tiles
+            for (let i = candidateTiles.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [candidateTiles[i], candidateTiles[j]] = [candidateTiles[j], candidateTiles[i]];
+            }
+
+            const numGems = 10;
+            const numPotions = Math.floor(Math.random() * 2) + 1; // 1 or 2
+            if (candidateTiles.length < numGems + numPotions) {
+                return generateDungeon(); // Not enough spots for items
+            }
+
+            // Place Potions
+            gameState.potions = [];
+            const potionSpawns = candidateTiles.splice(0, numPotions);
+            potionSpawns.forEach(([x, y]) => {
+                gameState.potions.push({
                     x: x * TILE_SIZE,
-                    y: (y + 1) * TILE_SIZE - 16,
-                    width: TILE_SIZE,
-                    height: 16
+                    y: y * TILE_SIZE,
+                    bobOffset: Math.random() * Math.PI * 2
                 });
             });
 
             // Place gems
             gameState.gems = [];
-            const numGems = 10;
-            const gemCandidateTiles = reachableTiles.filter(([x, y]) => {
-                 // Ensure gems don't spawn in the same tile as a spike or enemy origin
-                 return ![...enemySpawns, ...spikeSpawns].some(spawn => spawn[0] === x && spawn[1] === y);
-            });
-            
-            if (gemCandidateTiles.length < numGems) {
-                return generateDungeon(); // Not enough spots for gems
-            }
-
-            for (let i = gemCandidateTiles.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [gemCandidateTiles[i], gemCandidateTiles[j]] = [gemCandidateTiles[j], gemCandidateTiles[i]];
-            }
-
-            const gemSpawns = gemCandidateTiles.slice(0, numGems);
+            const gemSpawns = candidateTiles.slice(0, numGems);
             gemSpawns.forEach(([x, y]) => {
                 gameState.gems.push({
                     x: x * TILE_SIZE + TILE_SIZE/2,
@@ -684,6 +736,29 @@
                 ctx.closePath();
                 ctx.fill();
             }
+        }
+
+        function drawPotion(x, y, bobOffset) {
+            const bob = Math.sin(Date.now() * 0.003 + bobOffset) * 3;
+            ctx.save();
+            ctx.translate(x + TILE_SIZE / 2, y + TILE_SIZE / 2 + bob);
+
+            // Potion liquid
+            ctx.fillStyle = '#ff69b4'; // Hot Pink
+            ctx.beginPath();
+            ctx.arc(0, 0, 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Flask
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Stopper
+            ctx.fillStyle = '#8B4513'; // Saddle Brown
+            ctx.fillRect(-4, -12, 8, 4);
+
+            ctx.restore();
         }
 
         // Update game logic
@@ -849,10 +924,34 @@
                     if (player.health <= 0) {
                         document.getElementById('gameOver').style.display = 'block';
                         gameState.status = 'gameOver';
-                        soundManager.sounds.music.stop();
+                        soundManager.stop('music');
                         soundManager.play('gameOver');
                     }
                 }
+            });
+            
+            // Collect potions
+            gameState.potions = gameState.potions.filter(potion => {
+                if (checkCollision(player, { x: potion.x, y: potion.y, width: TILE_SIZE, height: TILE_SIZE })) {
+                    player.health = Math.min(player.maxHealth, player.health + 50);
+                    document.getElementById('healthFill').style.width = 
+                        (player.health / player.maxHealth * 100) + '%';
+                    
+                    soundManager.play('potion');
+
+                    // Healing particles
+                    for (let i = 0; i < 15; i++) {
+                        createParticle(
+                            player.x + player.width/2,
+                            player.y + player.height/2,
+                            '#ff69b4',
+                            (Math.random() - 0.5) * 6,
+                            (Math.random() - 0.5) * 6 - 2
+                        );
+                    }
+                    return false; // remove potion
+                }
+                return true;
             });
             
             // Collect gems
@@ -867,7 +966,7 @@
                     if (gameState.gems.length === 1) { // This is the last gem
                         gameState.status = 'won';
                         document.getElementById('gameWon').style.display = 'block';
-                        soundManager.sounds.music.stop();
+                        soundManager.stop('music');
                         soundManager.play('win');
                     }
 
@@ -962,7 +1061,7 @@
             document.getElementById('score').textContent = '0';
             generateDungeon();
             resetLevel();
-            soundManager.sounds.music.play();
+            soundManager.play('music');
         }
 
         // Render game
@@ -1008,6 +1107,11 @@
                     );
                 }
                 ctx.fillStyle = colors.stoneGray;
+            });
+            
+            // Draw potions
+            gameState.potions.forEach(potion => {
+                drawPotion(potion.x, potion.y, potion.bobOffset);
             });
             
             // Draw spikes
@@ -1097,7 +1201,17 @@
                     2, 2
                 );
             });
-
+            
+            // Draw potions
+            minimapCtx.fillStyle = '#ff69b4'; // Hot Pink
+            gameState.potions.forEach(potion => {
+                minimapCtx.fillRect(
+                    (potion.x / TILE_SIZE) * MINIMAP_SCALE - 1,
+                    (potion.y / TILE_SIZE) * MINIMAP_SCALE - 1,
+                    3, 3
+                );
+            });
+            
             // Draw camera view
             minimapCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
             minimapCtx.lineWidth = 2;
@@ -1131,8 +1245,12 @@
             soundManager.play('music');
         });
 
-        document.getElementById('soundToggle').addEventListener('click', () => {
-            soundManager.toggleMute();
+        document.getElementById('musicToggle').addEventListener('click', () => {
+            soundManager.toggleMusicMute();
+        });
+
+        document.getElementById('sfxToggle').addEventListener('click', () => {
+            soundManager.toggleSfxMute();
         });
 
         const bgCanvas = document.getElementById('backgroundCanvas');
