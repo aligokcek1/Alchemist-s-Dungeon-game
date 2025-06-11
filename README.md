@@ -2,7 +2,7 @@
 
 A retro-style, desktop-focused platformer game built with pure Vanilla JavaScript, HTML, and CSS, styled with Tailwind CSS for a modern UI polish. All assets and logic are contained within a single HTML file, making it a portable and impressive showcase of web development skills.
 
-![Alchemist's Dungeon Screenshot](https://github.com/user-attachments/assets/0baca747-06a9-49c5-901d-d5042b255094) 
+<img width="1424" alt="Screenshot 2025-06-11 at 16 33 25" src="https://github.com/user-attachments/assets/ce394692-9e9c-4ec0-867c-5e71a8c47778" />
 
 ## Features
 
