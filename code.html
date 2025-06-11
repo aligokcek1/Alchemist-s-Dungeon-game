@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alchemist's Dungeon</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        body {
+            font-family: 'Press Start 2P', cursive;
+            overflow: hidden;
+        }
+
+        .text-glow {
+            text-shadow: 0 0 8px rgba(255, 215, 0, 0.8), 0 0 20px rgba(255, 191, 0, 0.6), 0 0 40px rgba(74, 20, 140, 0.5);
+        }
+        
+        #gameContainer {
+            position: relative;
+            box-shadow: 0 0 100px rgba(138, 43, 226, 0.6), inset 0 0 50px rgba(74, 20, 140, 0.7);
+            border: 6px solid #4a148c;
+            background: #000;
+            z-index: 10;
+        }
+
+        #gameContainer::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 5;
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+            animation: flicker 0.15s infinite;
+        }
+
+        @keyframes flicker {
+            0% { opacity: 1; }
+            50% { opacity: 0.8; }
+            100% { opacity: 1; }
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+
+        #minimap {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            border: 3px solid #ffd700;
+            background: rgba(13, 5, 21, 0.85);
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.6), inset 0 0 10px rgba(255, 215, 0, 0.3);
+            z-index: 10;
+        }
+
+        #ui {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            color: #ffd700;
+            font-size: 14px;
+            text-shadow: 3px 3px 0 #4a148c, 0 0 10px #ffbf00;
+            z-index: 10;
+        }
+
+        .health-bar {
+            width: 220px;
+            height: 24px;
+            border: 3px solid #ffd700;
+            background: #1a0f1f;
+            margin: 10px 0;
+            position: relative;
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+
+        .health-fill {
+            height: 100%;
+            background: linear-gradient(to right, #dc143c, #ff6347);
+            transition: width 0.3s ease;
+            box-shadow: inset 0 0 5px rgba(255, 255, 255, 0.4);
+        }
+
+        .score {
+            margin-top: 10px;
+            letter-spacing: 2px;
+        }
+
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ffd700;
+            font-size: 48px;
+            text-align: center;
+            display: none;
+            text-shadow: 4px 4px 0 #4a148c, 0 0 20px #dc143c;
+            z-index: 20;
+            animation: gameOverFlicker 1.5s infinite;
+        }
+
+        #gameWon {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ffd700;
+            font-size: 48px;
+            text-align: center;
+            display: none;
+            text-shadow: 4px 4px 0 #50c878, 0 0 25px #ffd700;
+            z-index: 20;
+            animation: gameOverFlicker 1.5s infinite;
+        }
+
+        @keyframes gameOverFlicker {
+            0%, 100% { text-shadow: 4px 4px 0 #4a148c, 0 0 20px #dc143c; opacity: 1; }
+            50% { text-shadow: 4px 4px 0 #4a148c, 0 0 25px #dc143c; opacity: 0.9; }
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 15px;
+            left: 15px;
+            color: #ffd700;
+            font-size: 12px;
+            opacity: 0.9;
+            text-shadow: 2px 2px 0 #4a148c, 0 0 8px #ffbf00;
+            z-index: 10;
+        }
+
+        .bar {
+            width: 15px;
+            height: 75px;
+            margin: 0 5px;
+            background-color: #ffd700;
+            border-radius: 5px;
+            animation: bar-pulse 1.2s infinite ease-in-out;
+            box-shadow: 0 0 10px #ffd700, 0 0 20px #ffbf00;
+        }
+
+        .bar:nth-child(2) { animation-delay: 0.1s; }
+        .bar:nth-child(3) { animation-delay: 0.2s; }
+        .bar:nth-child(4) { animation-delay: 0.3s; }
+        .bar:nth-child(5) { animation-delay: 0.4s; }
+
+        @keyframes bar-pulse {
+            0%, 100% {
+                transform: scaleY(0.3);
+                opacity: 0.5;
+            }
+            50% {
+                transform: scaleY(1);
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-900">
+    <div id="loadingScreen" class="fixed inset-0 bg-gray-900 flex items-center justify-center z-[100] transition-opacity duration-1000">
+        <div class="flex justify-center items-center">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+        </div>
+    </div>
+    <canvas id="backgroundCanvas" class="fixed top-0 left-0 w-full h-full z-0"></canvas>
+    
+    <main class="relative z-10 flex flex-col items-center justify-center min-h-screen p-4 text-amber-300">
+        <h1 class="text-4xl md:text-5xl text-glow mb-4">Alchemist's Dungeon</h1>
+        <div id="gameContainer">
+            <canvas id="gameCanvas"></canvas>
+            <canvas id="minimap"></canvas>
+            
+            <div id="ui">
+                <div>HEALTH</div>
+                <div class="health-bar">
+                    <div class="health-fill" id="healthFill" style="width: 100%"></div>
+                </div>
+                <div class="score">SCORE: <span id="score">0</span></div>
+            </div>
+            
+            <div id="gameOver">
+                GAME OVER<br>
+                <span style="font-size: 18px; text-shadow: 2px 2px 0 #4a148c;">Press R to Restart</span>
+            </div>
+            
+            <div id="gameWon">
+                YOU WON!<br>
+                <span style="font-size: 18px; text-shadow: 2px 2px 0 #4a148c;">Press R to Restart</span>
+            </div>
+            
+            <div class="controls">
+                WASD: Move | SPACE: Jump
+            </div>
+        </div>
+    </main>
+
+    <div id="startScreen" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+        <div class="bg-gray-900/80 border-2 border-purple-500/50 rounded-lg p-8 text-center shadow-2xl shadow-purple-500/30 max-w-md mx-4">
+            <h2 class="text-3xl md:text-4xl text-glow mb-4 text-amber-300">Alchemist's Dungeon</h2>
+            <p class="text-white/90 mb-2 text-sm md:text-base">Use <kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">WASD</kbd> to move and <kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">SPACE</kbd> to jump.</p>
+            <p class="text-white/90 mb-6 text-sm md:text-base">Collect all the gems to win!</p>
+            <button id="startGameBtn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-full transition-all duration-300 shadow-lg hover:shadow-xl shadow-purple-500/50 hover:shadow-purple-500/70 transform hover:scale-105">Start Game</button>
+        </div>
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const minimapCanvas = document.getElementById('minimap');
+        const minimapCtx = minimapCanvas.getContext('2d');
+
+        // Game constants
+        const NATIVE_WIDTH = 800;
+        const NATIVE_HEIGHT = 600;
+        const TILE_SIZE = 32;
+        const MINIMAP_SCALE = 5;
+        const GRAVITY = 0.5;
+        const JUMP_FORCE = -12;
+        const PLAYER_SPEED = 4;
+        const ENEMY_SPEED = 1;
+
+        // Color palette (Alchemical)
+        const colors = {
+            darkPurple: '#4a148c',
+            deepPurple: '#6a1b9a',
+            gold: '#ffd700',
+            emerald: '#50c878',
+            crimson: '#dc143c',
+            stoneGray: '#696969',
+            darkBlue: '#191970',
+            amber: '#ffbf00'
+        };
+
+        // Game state
+        let gameState = {
+            player: {
+                x: 100,
+                y: 100,
+                width: 24,
+                height: 24,
+                vx: 0,
+                vy: 0,
+                health: 100,
+                maxHealth: 100,
+                onGround: false,
+                facing: 1, // 1 for right, -1 for left
+                idleTimer: 0,
+                jumpSquash: 1
+            },
+            enemies: [],
+            gems: [],
+            spikes: [],
+            platforms: [],
+            particles: [],
+            score: 0,
+            camera: { x: 0, y: 0 },
+            keys: {},
+            level: [],
+            levelWidth: 30,
+            levelHeight: 20,
+            screenShake: 0,
+            status: 'startScreen'
+        };
+
+        // Input handling
+        window.addEventListener('keydown', (e) => {
+            gameState.keys[e.key.toLowerCase()] = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            gameState.keys[e.key.toLowerCase()] = false;
+        });
+
+        // Resize game
+        function resizeGame() {
+            const aspectRatio = NATIVE_WIDTH / NATIVE_HEIGHT;
+            const mainContent = document.querySelector('main');
+            const titleHeight = mainContent.querySelector('h1').offsetHeight;
+            const gap = 16; // Corresponds to mb-4
+            const minGameWidth = 500; 
+
+            let maxHeight = (window.innerHeight - titleHeight - gap) * 0.9;
+            let maxWidth = window.innerWidth * 0.95;
+
+            let newWidth = maxWidth;
+            let newHeight = newWidth / aspectRatio;
+
+            if (newHeight > maxHeight) {
+                newHeight = maxHeight;
+                newWidth = newHeight * aspectRatio;
+            }
+
+            if (newWidth < minGameWidth) {
+                newWidth = minGameWidth;
+                newHeight = newWidth / aspectRatio;
+            }
+            
+            const gameContainer = document.getElementById('gameContainer');
+            gameContainer.style.width = `${newWidth}px`;
+            gameContainer.style.height = `${newHeight}px`;
+
+            canvas.width = NATIVE_WIDTH;
+            canvas.height = NATIVE_HEIGHT;
+            ctx.imageSmoothingEnabled = false;
+            minimapCtx.imageSmoothingEnabled = false;
+        }
+
+        window.addEventListener('resize', resizeGame);
+
+        // Procedural dungeon generation
+        function generateDungeon() {
+            const { levelWidth, levelHeight } = gameState;
+            const level = Array(levelHeight).fill().map(() => Array(levelWidth).fill(0));
+            
+            const playerSpawnX = 2;
+            const playerSpawnY = levelHeight - 4;
+            const safeZoneRadius = 5;
+
+            // Create outer walls
+            for (let y = 0; y < levelHeight; y++) {
+                for (let x = 0; x < levelWidth; x++) {
+                    if (y === 0 || y === levelHeight - 1 || x === 0 || x === levelWidth - 1) {
+                        level[y][x] = 1;
+                    }
+                }
+            }
+
+            // Add platforms
+            for (let i = 0; i < 15; i++) {
+                const x = Math.floor(Math.random() * (levelWidth - 6)) + 3;
+                const y = Math.floor(Math.random() * (levelHeight - 6)) + 3;
+                const width = Math.floor(Math.random() * 4) + 3;
+                
+                for (let j = 0; j < width; j++) {
+                    if (x + j < levelWidth - 1) {
+                        level[y][x + j] = 1;
+                    }
+                }
+            }
+
+            // Create ground
+            for (let x = 0; x < levelWidth; x++) {
+                level[levelHeight - 2][x] = 1;
+            }
+
+            gameState.level = level;
+            
+            // Set minimap dimensions
+            minimapCanvas.width = levelWidth * MINIMAP_SCALE;
+            minimapCanvas.height = levelHeight * MINIMAP_SCALE;
+            minimapCtx.imageSmoothingEnabled = false;
+            
+            // Convert to platforms for collision
+            gameState.platforms = [];
+            for (let y = 0; y < levelHeight; y++) {
+                for (let x = 0; x < levelWidth; x++) {
+                    if (level[y][x] === 1) {
+                        gameState.platforms.push({
+                            x: x * TILE_SIZE,
+                            y: y * TILE_SIZE,
+                            width: TILE_SIZE,
+                            height: TILE_SIZE
+                        });
+                    }
+                }
+            }
+
+            // Place enemies
+            gameState.enemies = [];
+            for (let i = 0; i < 5; i++) {
+                let placed = false;
+                while (!placed) {
+                    const x = Math.floor(Math.random() * (levelWidth - 2)) + 1;
+                    const y = Math.floor(Math.random() * (levelHeight - 3)) + 1;
+                    
+                    if (level[y][x] === 0 && level[y + 1][x] === 1) {
+                        const distance = Math.sqrt(Math.pow(x - playerSpawnX, 2) + Math.pow(y - playerSpawnY, 2));
+                        if(distance > safeZoneRadius) {
+                            gameState.enemies.push({
+                                x: x * TILE_SIZE,
+                                y: y * TILE_SIZE,
+                                width: 24,
+                                height: 24,
+                                vx: ENEMY_SPEED * (Math.random() > 0.5 ? 1 : -1)
+                            });
+                            placed = true;
+                        }
+                    }
+                }
+            }
+
+            // Place spikes
+            gameState.spikes = [];
+            for (let i = 0; i < 8; i++) {
+                let placed = false;
+                while (!placed) {
+                    const x = Math.floor(Math.random() * (levelWidth - 2)) + 1;
+                    const y = Math.floor(Math.random() * (levelHeight - 3)) + 1;
+                    
+                    if (level[y][x] === 0 && level[y + 1][x] === 1) {
+                        const distance = Math.sqrt(Math.pow(x - playerSpawnX, 2) + Math.pow(y - playerSpawnY, 2));
+                        if(distance > safeZoneRadius) {
+                            gameState.spikes.push({
+                                x: x * TILE_SIZE,
+                                y: (y + 1) * TILE_SIZE - 16,
+                                width: TILE_SIZE,
+                                height: 16
+                            });
+                            placed = true;
+                        }
+                    }
+                }
+            }
+
+            // Place gems
+            gameState.gems = [];
+            for (let i = 0; i < 10; i++) {
+                let placed = false;
+                while (!placed) {
+                    const x = Math.floor(Math.random() * (levelWidth - 2)) + 1;
+                    const y = Math.floor(Math.random() * (levelHeight - 2)) + 1;
+                    
+                    if (level[y][x] === 0) {
+                        let isSpikeLocation = false;
+                        for (const spike of gameState.spikes) {
+                            const spikeTileX = spike.x / TILE_SIZE;
+                            const spikeTileY = Math.floor(spike.y / TILE_SIZE);
+                            if (spikeTileX === x && spikeTileY === y) {
+                                isSpikeLocation = true;
+                                break;
+                            }
+                        }
+
+                        if (!isSpikeLocation) {
+                            gameState.gems.push({
+                                x: x * TILE_SIZE + TILE_SIZE/2,
+                                y: y * TILE_SIZE + TILE_SIZE/2,
+                                collected: false,
+                                bobOffset: Math.random() * Math.PI * 2
+                            });
+                            placed = true;
+                        }
+                    }
+                }
+            }
+
+            // Set player start position
+            gameState.player.x = playerSpawnX * TILE_SIZE;
+            gameState.player.y = playerSpawnY * TILE_SIZE;
+        }
+
+        // Collision detection
+        function checkCollision(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        // Particle system
+        function createParticle(x, y, color, vx, vy) {
+            gameState.particles.push({
+                x, y, color, vx, vy,
+                life: 30,
+                size: Math.random() * 3 + 1
+            });
+        }
+
+        // Draw pixel art character
+        function drawPlayer(x, y, facing) {
+            const player = gameState.player;
+            ctx.save();
+            ctx.translate(x + player.width/2, y + player.height);
+            ctx.scale(facing, 1);
+
+            const idleBob = player.idleTimer > 20 ? Math.sin(Date.now() * 0.005) * 1.5 : 0;
+            
+            const squashX = 1 / player.jumpSquash;
+            const squashY = player.jumpSquash;
+
+            ctx.scale(squashX, squashY);
+            ctx.translate(0, idleBob -player.height);
+            
+            // Body
+            ctx.fillStyle = colors.deepPurple;
+            ctx.fillRect(-8, 4, 16, 16);
+            
+            // Cloak
+            ctx.fillStyle = colors.darkPurple;
+            ctx.fillRect(-10, 8, 20, 12);
+            
+            // Hat
+            ctx.fillStyle = colors.gold;
+            ctx.fillRect(-6, -4, 12, 8);
+            ctx.fillRect(-8, -2, 16, 2);
+            
+            // Eyes
+            ctx.fillStyle = colors.emerald;
+            ctx.fillRect(2, 8, 4, 4);
+            
+            ctx.restore();
+        }
+
+        // Draw enemy
+        function drawEnemy(x, y) {
+            // Body
+            ctx.fillStyle = colors.crimson;
+            ctx.fillRect(x + 4, y + 4, 16, 16);
+            
+            // Spikes
+            ctx.fillStyle = colors.darkBlue;
+            for (let i = 0; i < 4; i++) {
+                ctx.fillRect(x + 2 + i * 5, y, 3, 4);
+                ctx.fillRect(x + 2 + i * 5, y + 20, 3, 4);
+            }
+            
+            // Eyes
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(x + 6, y + 8, 3, 3);
+            ctx.fillRect(x + 15, y + 8, 3, 3);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(x + 7, y + 9, 1, 1);
+            ctx.fillRect(x + 16, y + 9, 1, 1);
+        }
+
+        // Draw gem
+        function drawGem(x, y, bobOffset) {
+            const bob = Math.sin(Date.now() * 0.003 + bobOffset) * 3;
+            
+            ctx.save();
+            ctx.translate(x, y + bob);
+            ctx.rotate(Date.now() * 0.002);
+            
+            // Gem shape
+            ctx.fillStyle = colors.emerald;
+            ctx.fillRect(-6, -6, 12, 12);
+            ctx.fillStyle = colors.gold;
+            ctx.fillRect(-4, -4, 8, 8);
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(-2, -2, 4, 4);
+            
+            ctx.restore();
+        }
+
+        // Draw spike
+        function drawSpike(x, y) {
+            ctx.fillStyle = colors.stoneGray;
+            ctx.fillRect(x, y + 8, TILE_SIZE, 8);
+            
+            ctx.fillStyle = colors.crimson;
+            for (let i = 0; i < 4; i++) {
+                ctx.beginPath();
+                ctx.moveTo(x + i * 8 + 4, y + 8);
+                ctx.lineTo(x + i * 8, y);
+                ctx.lineTo(x + i * 8 + 8, y);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+
+        // Update game logic
+        function update() {
+            if (gameState.status !== 'playing') {
+                if (gameState.keys['r'] && (gameState.status === 'gameOver' || gameState.status === 'won')) {
+                    resetGame();
+                }
+                return;
+            }
+
+            if (gameState.player.health <= 0) {
+                // This check is a safeguard, but state is set on hit
+                return;
+            }
+
+            const player = gameState.player;
+            
+            if (Math.abs(player.vx) < 0.1 && player.onGround) {
+                player.idleTimer++;
+            } else {
+                player.idleTimer = 0;
+            }
+
+            // Player movement
+            if (gameState.keys['a']) {
+                player.vx = -PLAYER_SPEED;
+                player.facing = -1;
+            } else if (gameState.keys['d']) {
+                player.vx = PLAYER_SPEED;
+                player.facing = 1;
+            } else {
+                player.vx *= 0.8;
+            }
+            
+            // Jumping
+            if ((gameState.keys[' '] || gameState.keys['w']) && player.onGround) {
+                player.vy = JUMP_FORCE;
+                player.onGround = false;
+                player.jumpSquash = 1.5;
+                
+                // Jump particles
+                for (let i = 0; i < 5; i++) {
+                    createParticle(
+                        player.x + player.width/2,
+                        player.y + player.height,
+                        colors.amber,
+                        (Math.random() - 0.5) * 3,
+                        Math.random() * -2
+                    );
+                }
+            }
+            
+            // Apply gravity
+            player.vy += GRAVITY;
+            
+            // Update position
+            player.x += player.vx;
+            player.y += player.vy;
+            
+            player.jumpSquash += (1 - player.jumpSquash) * 0.1;
+
+            // Platform collision
+            let wasOnGround = player.onGround;
+            player.onGround = false;
+            gameState.platforms.forEach(platform => {
+                if (checkCollision(player, platform)) {
+                    // Top collision
+                    if (player.vy > 0 && player.y + player.height - player.vy < platform.y + 1) {
+                        if (!wasOnGround) {
+                            player.jumpSquash = 0.6;
+                            // Landing particles
+                            for (let i = 0; i < 3; i++) {
+                                createParticle(
+                                    player.x + player.width/2,
+                                    player.y + player.height,
+                                    colors.stoneGray,
+                                    (Math.random() - 0.5) * 2,
+                                    Math.random() * -1
+                                );
+                            }
+                        }
+                        player.y = platform.y - player.height;
+                        player.vy = 0;
+                        player.onGround = true;
+                    }
+                    // Bottom collision
+                    else if (player.vy < 0 && player.y - player.vy > platform.y + platform.height - 1) {
+                        player.y = platform.y + platform.height;
+                        player.vy = 0;
+                    }
+                    // Side collisions
+                    else if (player.vx > 0) {
+                        player.x = platform.x - player.width;
+                        player.vx = 0;
+                    } else if (player.vx < 0) {
+                        player.x = platform.x + platform.width;
+                        player.vx = 0;
+                    }
+                }
+            });
+            
+            // Update enemies
+            gameState.enemies.forEach(enemy => {
+                const nextX = enemy.x + enemy.vx;
+
+                // Wall collision check
+                let wallCollision = false;
+                const nextEnemyRect = { x: nextX, y: enemy.y, width: enemy.width, height: enemy.height };
+                gameState.platforms.forEach(platform => {
+                    // Check for horizontal collision.
+                    if (checkCollision(nextEnemyRect, platform) && (platform.y < enemy.y + enemy.height && platform.y + platform.height > enemy.y)) {
+                        wallCollision = true;
+                    }
+                });
+
+                // Ledge detection: Check for ground under the enemy's leading foot.
+                const frontFootX = enemy.vx > 0 ? nextX + enemy.width : nextX;
+                const groundTileX = Math.floor(frontFootX / TILE_SIZE);
+                const groundTileY = Math.floor(enemy.y / TILE_SIZE) + 1; // Tile below the enemy
+
+                let hasGroundAhead = false;
+                // Check if the tile coordinates are valid and if there is a platform tile.
+                if (gameState.level[groundTileY] && gameState.level[groundTileY][groundTileX] === 1) {
+                    hasGroundAhead = true;
+                }
+                
+                // If there's a wall or no ground ahead, reverse direction.
+                if (wallCollision || !hasGroundAhead) {
+                    enemy.vx *= -1;
+                } else {
+                    // Otherwise, move the enemy.
+                    enemy.x += enemy.vx;
+                }
+                
+                // Check collision with player
+                if (checkCollision(player, enemy)) {
+                    player.health -= 10;
+                    document.getElementById('healthFill').style.width = 
+                        (player.health / player.maxHealth * 100) + '%';
+                    
+                    // Knockback
+                    player.vx = (player.x < enemy.x ? -8 : 8);
+                    player.vy = -5;
+                    
+                    triggerScreenShake(15);
+
+                    // Damage particles
+                    for (let i = 0; i < 10; i++) {
+                        createParticle(
+                            player.x + player.width/2,
+                            player.y + player.height/2,
+                            colors.crimson,
+                            (Math.random() - 0.5) * 5,
+                            (Math.random() - 0.5) * 5
+                        );
+                    }
+                    
+                    if (player.health <= 0) {
+                        document.getElementById('gameOver').style.display = 'block';
+                        gameState.status = 'gameOver';
+                    }
+                }
+            });
+            
+            // Collect gems
+            gameState.gems = gameState.gems.filter(gem => {
+                if (!gem.collected && checkCollision(player, 
+                    { x: gem.x - 10, y: gem.y - 10, width: 20, height: 20 })) {
+                    gameState.score += 1;
+                    document.getElementById('score').textContent = gameState.score;
+                    
+                    // Check for win condition
+                    if (gameState.gems.length === 1) { // This is the last gem
+                        gameState.status = 'won';
+                        document.getElementById('gameWon').style.display = 'block';
+                    }
+
+                    // Collection particles
+                    for (let i = 0; i < 15; i++) {
+                        createParticle(
+                            gem.x,
+                            gem.y,
+                            colors.gold,
+                            (Math.random() - 0.5) * 8,
+                            (Math.random() - 0.5) * 8
+                        );
+                    }
+                    
+                    return false;
+                }
+                return true;
+            });
+            
+            // Check spike collision
+            gameState.spikes.forEach(spike => {
+                if (checkCollision(player, spike)) {
+                    // Player's bottom in the previous frame
+                    const playerPrevBottom = player.y + player.height - player.vy;
+
+                    // Check for collision and if the player is landing on top of the spike
+                    if (player.vy >= 0 && playerPrevBottom <= spike.y + 1) {
+                        resetLevel();
+                    } 
+                    // If not landing on top, treat as a solid wall from the sides
+                    else if (player.vx > 0) {
+                        player.x = spike.x - player.width;
+                        player.vx = 0;
+                    } else if (player.vx < 0) {
+                        player.x = spike.x + spike.width;
+                        player.vx = 0;
+                    }
+                }
+            });
+            
+            // Update particles
+            gameState.particles = gameState.particles.filter(particle => {
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.vy += 0.2;
+                particle.life--;
+                particle.size *= 0.95;
+                return particle.life > 0;
+            });
+            
+            // Camera follow
+            gameState.camera.x = player.x - canvas.width / 2;
+            gameState.camera.y = player.y - canvas.height / 2;
+        }
+
+        function triggerScreenShake(intensity) {
+            gameState.screenShake = intensity;
+        }
+
+        // Reset level
+        function resetLevel() {
+            gameState.player.x = 2 * TILE_SIZE;
+            gameState.player.y = (gameState.levelHeight - 4) * TILE_SIZE;
+            gameState.player.vx = 0;
+            gameState.player.vy = 0;
+            gameState.player.health = gameState.player.maxHealth;
+            document.getElementById('healthFill').style.width = '100%';
+            
+            triggerScreenShake(20);
+            
+            // Reset particles
+            for (let i = 0; i < 20; i++) {
+                createParticle(
+                    gameState.player.x + gameState.player.width/2,
+                    gameState.player.y + gameState.player.height/2,
+                    colors.deepPurple,
+                    (Math.random() - 0.5) * 10,
+                    (Math.random() - 0.5) * 10
+                );
+            }
+        }
+
+        // Reset game
+        function resetGame() {
+            document.getElementById('gameOver').style.display = 'none';
+            document.getElementById('gameWon').style.display = 'none';
+            
+            gameState.status = 'playing';
+            gameState.score = 0;
+            document.getElementById('score').textContent = '0';
+            generateDungeon();
+            resetLevel();
+        }
+
+        // Render game
+        function render() {
+            if (gameState.status === 'startScreen') {
+                // Don't render the game world if we're on the start screen
+                ctx.fillStyle = '#0d0515'; // Match canvas clear color
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                minimapCtx.fillStyle = '#1a0f1f'; // Match minimap clear color
+                minimapCtx.fillRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+                return;
+            }
+
+            // Clear canvas
+            ctx.fillStyle = '#0d0515';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            let shakeX = 0;
+            let shakeY = 0;
+            if (gameState.screenShake > 0) {
+                shakeX = (Math.random() - 0.5) * gameState.screenShake;
+                shakeY = (Math.random() - 0.5) * gameState.screenShake;
+                gameState.screenShake *= 0.9;
+            }
+
+            // Save context for camera transform
+            ctx.save();
+            ctx.translate(-gameState.camera.x + shakeX, -gameState.camera.y + shakeY);
+            
+            // Draw platforms
+            ctx.fillStyle = colors.stoneGray;
+            gameState.platforms.forEach(platform => {
+                ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+                
+                // Add texture
+                ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                for (let i = 0; i < 3; i++) {
+                    ctx.fillRect(
+                        platform.x + Math.random() * platform.width,
+                        platform.y + Math.random() * platform.height,
+                        4, 4
+                    );
+                }
+                ctx.fillStyle = colors.stoneGray;
+            });
+            
+            // Draw spikes
+            gameState.spikes.forEach(spike => {
+                drawSpike(spike.x, spike.y);
+            });
+            
+            // Draw gems
+            gameState.gems.forEach(gem => {
+                drawGem(gem.x, gem.y, gem.bobOffset);
+            });
+            
+            // Draw enemies
+            gameState.enemies.forEach(enemy => {
+                drawEnemy(enemy.x, enemy.y);
+            });
+            
+            // Draw particles
+            gameState.particles.forEach(particle => {
+                ctx.fillStyle = particle.color;
+                ctx.fillRect(
+                    particle.x - particle.size/2,
+                    particle.y - particle.size/2,
+                    particle.size,
+                    particle.size
+                );
+            });
+            
+            // Draw player
+            drawPlayer(gameState.player.x, gameState.player.y, gameState.player.facing);
+            
+            // Vignette effect
+            const gradient = ctx.createRadialGradient(
+                gameState.player.x, gameState.player.y, 100,
+                gameState.player.x, gameState.player.y, 400
+            );
+            gradient.addColorStop(0, 'rgba(13, 5, 21, 0)');
+            gradient.addColorStop(1, 'rgba(13, 5, 21, 0.9)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(gameState.camera.x, gameState.camera.y, canvas.width, canvas.height);
+
+            ctx.restore();
+            
+            // Draw minimap
+            renderMinimap();
+        }
+
+        // Render minimap
+        function renderMinimap() {
+            minimapCtx.fillStyle = '#1a0f1f';
+            minimapCtx.fillRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+            
+            // Draw level
+            minimapCtx.fillStyle = colors.stoneGray;
+            gameState.level.forEach((row, y) => {
+                row.forEach((tile, x) => {
+                    if (tile === 1) {
+                        minimapCtx.fillRect(x * MINIMAP_SCALE, y * MINIMAP_SCALE, MINIMAP_SCALE, MINIMAP_SCALE);
+                    }
+                });
+            });
+            
+            // Draw player
+            minimapCtx.fillStyle = colors.gold;
+            minimapCtx.fillRect(
+                (gameState.player.x / TILE_SIZE) * MINIMAP_SCALE - 2,
+                (gameState.player.y / TILE_SIZE) * MINIMAP_SCALE - 2,
+                4, 4
+            );
+            
+            // Draw enemies
+            minimapCtx.fillStyle = colors.crimson;
+            gameState.enemies.forEach(enemy => {
+                minimapCtx.fillRect(
+                    (enemy.x / TILE_SIZE) * MINIMAP_SCALE - 1,
+                    (enemy.y / TILE_SIZE) * MINIMAP_SCALE - 1,
+                    2, 2
+                );
+            });
+            
+            // Draw gems
+            minimapCtx.fillStyle = colors.emerald;
+            gameState.gems.forEach(gem => {
+                minimapCtx.fillRect(
+                    (gem.x / TILE_SIZE) * MINIMAP_SCALE - 1,
+                    (gem.y / TILE_SIZE) * MINIMAP_SCALE - 1,
+                    2, 2
+                );
+            });
+
+            // Draw camera view
+            minimapCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            minimapCtx.lineWidth = 2;
+            minimapCtx.strokeRect(
+                (gameState.camera.x / TILE_SIZE) * MINIMAP_SCALE,
+                (gameState.camera.y / TILE_SIZE) * MINIMAP_SCALE,
+                (NATIVE_WIDTH / TILE_SIZE) * MINIMAP_SCALE,
+                (NATIVE_HEIGHT / TILE_SIZE) * MINIMAP_SCALE
+            );
+        }
+
+        // Game loop
+        function gameLoop() {
+            update();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Initialize game
+        resizeGame();
+        generateDungeon();
+        gameLoop();
+
+        document.getElementById('startGameBtn').addEventListener('click', () => {
+            document.getElementById('startScreen').classList.add('hidden');
+            gameState.status = 'playing';
+        });
+
+        const bgCanvas = document.getElementById('backgroundCanvas');
+        const bgCtx = bgCanvas.getContext('2d');
+
+        let particles = [];
+        const particleColors = ['#4a148c', '#6a1b9a', '#ffd700', '#50c878'];
+
+        function resizeBgCanvas() {
+            bgCanvas.width = window.innerWidth;
+            bgCanvas.height = window.innerHeight;
+        }
+
+        function createBgParticle() {
+            const startX = -20;
+            const startY = Math.random() * bgCanvas.height;
+            return {
+                x: startX,
+                y: startY,
+                vx: Math.random() * 1.5 + 0.5, // Move right
+                size: Math.random() * 2 + 1,
+                color: particleColors[Math.floor(Math.random() * particleColors.length)],
+                initialY: startY,
+                waveAngle: Math.random() * Math.PI * 2
+            };
+        }
+
+        function initBgParticles() {
+            particles = [];
+            const numParticles = Math.floor((window.innerWidth * window.innerHeight) / 20000);
+            for (let i = 0; i < numParticles; i++) {
+                const p = createBgParticle();
+                p.x = Math.random() * window.innerWidth; // Start them all over the screen
+                particles.push(p);
+            }
+        }
+
+        function animateBackground() {
+            bgCtx.fillStyle = 'rgba(13, 5, 21, 0.25)';
+            bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+
+            particles.forEach((p, index) => {
+                p.x += p.vx;
+                
+                p.waveAngle += 0.01;
+                p.y = p.initialY + Math.sin(p.waveAngle) * 40;
+
+                if (p.x > bgCanvas.width + 20) {
+                    particles.splice(index, 1, createBgParticle());
+                }
+
+                bgCtx.beginPath();
+                bgCtx.fillStyle = p.color;
+                bgCtx.globalAlpha = Math.min(1, p.x / (bgCanvas.width * 0.1));
+                bgCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                bgCtx.fill();
+                bgCtx.globalAlpha = 1.0;
+            });
+
+            requestAnimationFrame(animateBackground);
+        }
+
+        window.addEventListener('resize', () => {
+            resizeBgCanvas();
+            initBgParticles();
+            resizeGame();
+        });
+        
+        resizeBgCanvas();
+        initBgParticles();
+        animateBackground();
+        
+        window.addEventListener('load', () => {
+            const loadingScreen = document.getElementById('loadingScreen');
+            const startScreen = document.getElementById('startScreen');
+            
+            setTimeout(() => {
+                loadingScreen.style.opacity = '0';
+                loadingScreen.addEventListener('transitionend', () => {
+                    loadingScreen.style.display = 'none';
+                    startScreen.classList.remove('hidden');
+                }, { once: true });
+            }, 2000);
+        });
+    </script>
+</body>
+</html>
