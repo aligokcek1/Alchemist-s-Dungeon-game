@@ -162,6 +162,26 @@
             text-shadow: none;
         }
 
+        .sound-toggle-btn {
+            background: none;
+            border: 2px solid #ffd700;
+            color: #ffd700;
+            font-family: 'Press Start 2P', cursive;
+            margin-left: 10px;
+            padding: 5px 8px;
+            cursor: pointer;
+            text-shadow: 1px 1px 0 #4a148c;
+            box-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
+            transition: all 0.2s ease;
+            font-size: 10px;
+        }
+
+        .sound-toggle-btn:hover {
+            background: #ffd700;
+            color: #4a148c;
+            text-shadow: none;
+        }
+
         .bar {
             width: 15px;
             height: 75px;
@@ -227,7 +247,8 @@
             
             <div class="controls">
                 <span>WASD: Move | SPACE: Jump</span>
-                <button id="soundToggle">SOUND ON</button>
+                <button id="musicToggle" class="sound-toggle-btn">MUSIC ON</button>
+                <button id="sfxToggle" class="sound-toggle-btn">SFX ON</button>
             </div>
         </div>
     </main>
@@ -253,7 +274,8 @@
 
         // Sound Manager
         const soundManager = {
-            isMuted: false,
+            isMusicMuted: false,
+            isSfxMuted: false,
             sounds: {
                 music: new Howl({
                     src: ['assets/audio/music.wav'],
@@ -269,14 +291,34 @@
                 gameOver: new Howl({ src: ['assets/audio/gameOver.wav'], volume: 0.7 }),
             },
             play: function(soundName) {
-                if (!this.isMuted && this.sounds[soundName]) {
-                    this.sounds[soundName].play();
+                const sound = this.sounds[soundName];
+                if (!sound) return;
+
+                const isMusic = soundName === 'music';
+
+                if (isMusic) {
+                    if (!this.isMusicMuted && !sound.playing()) {
+                         sound.play();
+                    }
+                } else {
+                    if (!this.isSfxMuted) {
+                        sound.play();
+                    }
                 }
             },
-            toggleMute: function() {
-                this.isMuted = !this.isMuted;
-                Howler.mute(this.isMuted);
-                document.getElementById('soundToggle').textContent = this.isMuted ? 'SOUND OFF' : 'SOUND ON';
+            stop: function(soundName) {
+                if (this.sounds[soundName]) {
+                    this.sounds[soundName].stop();
+                }
+            },
+            toggleMusicMute: function() {
+                this.isMusicMuted = !this.isMusicMuted;
+                this.sounds.music.mute(this.isMusicMuted);
+                document.getElementById('musicToggle').textContent = this.isMusicMuted ? 'MUSIC OFF' : 'MUSIC ON';
+            },
+            toggleSfxMute: function() {
+                this.isSfxMuted = !this.isSfxMuted;
+                document.getElementById('sfxToggle').textContent = this.isSfxMuted ? 'SFX OFF' : 'SFX ON';
             }
         };
 
@@ -857,7 +899,7 @@
                     if (player.health <= 0) {
                         document.getElementById('gameOver').style.display = 'block';
                         gameState.status = 'gameOver';
-                        soundManager.sounds.music.stop();
+                        soundManager.stop('music');
                         soundManager.play('gameOver');
                     }
                 }
@@ -875,7 +917,7 @@
                     if (gameState.gems.length === 1) { // This is the last gem
                         gameState.status = 'won';
                         document.getElementById('gameWon').style.display = 'block';
-                        soundManager.sounds.music.stop();
+                        soundManager.stop('music');
                         soundManager.play('win');
                     }
 
@@ -970,7 +1012,7 @@
             document.getElementById('score').textContent = '0';
             generateDungeon();
             resetLevel();
-            soundManager.sounds.music.play();
+            soundManager.play('music');
         }
 
         // Render game
@@ -1139,8 +1181,12 @@
             soundManager.play('music');
         });
 
-        document.getElementById('soundToggle').addEventListener('click', () => {
-            soundManager.toggleMute();
+        document.getElementById('musicToggle').addEventListener('click', () => {
+            soundManager.toggleMusicMute();
+        });
+
+        document.getElementById('sfxToggle').addEventListener('click', () => {
+            soundManager.toggleSfxMute();
         });
 
         const bgCanvas = document.getElementById('backgroundCanvas');
