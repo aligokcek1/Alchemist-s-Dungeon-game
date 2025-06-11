@@ -256,17 +256,17 @@
             isMuted: false,
             sounds: {
                 music: new Howl({
-                    src: ['assets/audio/music.mp3'],
+                    src: ['assets/audio/music.wav'],
                     loop: true,
-                    volume: 0.2
+                    volume: 0.07
                 }),
                 jump: new Howl({ src: ['assets/audio/jump.wav'], volume: 0.4 }),
-                land: new Howl({ src: ['assets/audio/land.ogg'], volume: 0.3 }),
-                gem: new Howl({ src: ['assets/audio/gem.ogg'], volume: 0.5 }),
-                hurt: new Howl({ src: ['assets/audio/hurt.ogg'], volume: 0.6 }),
-                win: new Howl({ src: ['assets/audio/win.mp3'], volume: 0.7 }),
-                gameOver: new Howl({ src: ['assets/audio/gameOver.mp3'], volume: 0.7 }),
-                reset: new Howl({ src: ['assets/audio/reset.ogg'], volume: 0.5 }),
+                land: new Howl({ src: ['assets/audio/land.wav'], volume: 0.3 }),
+                gem: new Howl({ src: ['assets/audio/gem.wav'], volume: 0.1 }),
+                hurt: new Howl({ src: ['assets/audio/hurt.wav'], volume: 0.2 }),
+                spike: new Howl({ src: ['assets/audio/spike.wav'], volume: 0.6 }),
+                win: new Howl({ src: ['assets/audio/win.wav'], volume: 0.7 }),
+                gameOver: new Howl({ src: ['assets/audio/gameOver.wav'], volume: 0.7 }),
             },
             play: function(soundName) {
                 if (!this.isMuted && this.sounds[soundName]) {
@@ -895,6 +895,7 @@
 
                     // Check for collision and if the player is landing on top of the spike
                     if (player.vy >= 0 && playerPrevBottom <= spike.y + 1) {
+                        soundManager.play('spike');
                         resetLevel();
                     } 
                     // If not landing on top, treat as a solid wall from the sides
@@ -937,7 +938,6 @@
             document.getElementById('healthFill').style.width = '100%';
             
             triggerScreenShake(20);
-            soundManager.play('reset');
             
             // Reset particles
             for (let i = 0; i < 20; i++) {
