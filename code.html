@@ -378,7 +378,7 @@
 
         window.addEventListener('resize', resizeGame);
 
-        function findReachableTiles(level, levelWidth, levelHeight, startX, startY) {
+        function findReachableTiles(level, levelWidth, levelHeight, startX, startY, spikeLocations = new Set()) {
             const reachable = new Set();
             const queue = [[startX, startY]];
             const visited = new Set([`${startX},${startY}`]);
@@ -390,7 +390,7 @@
 
                 // 1. Walk left/right (with air control)
                 for (const nx of [x - 1, x + 1]) {
-                    if (nx >= 0 && nx < levelWidth && level[y][nx] === 0 && !visited.has(`${nx},${y}`)) {
+                    if (nx >= 0 && nx < levelWidth && level[y][nx] === 0 && !visited.has(`${nx},${y}`) && !spikeLocations.has(`${nx},${y}`)) {
                         visited.add(`${nx},${y}`);
                         queue.push([nx, y]);
                     }
@@ -398,7 +398,7 @@
 
                 // 2. Fall
                 const nyDown = y + 1;
-                if (nyDown < levelHeight && level[nyDown][x] === 0 && !visited.has(`${x},${nyDown}`)) {
+                if (nyDown < levelHeight && level[nyDown][x] === 0 && !visited.has(`${x},${nyDown}`) && !spikeLocations.has(`${x},${nyDown}`)) {
                     visited.add(`${x},${nyDown}`);
                     queue.push([x, nyDown]);
                 }
@@ -408,13 +408,13 @@
                 if (onGround) {
                     for (let i = 1; i <= JUMP_HEIGHT; i++) {
                         const nyUp = y - i;
-                        if (nyUp >= 0 && level[nyUp][x] === 0) {
+                        if (nyUp >= 0 && level[nyUp][x] === 0 && !spikeLocations.has(`${x},${nyUp}`)) {
                             if (!visited.has(`${x},${nyUp}`)) {
                                 visited.add(`${x},${nyUp}`);
                                 queue.push([x, nyUp]);
                             }
                         } else {
-                            break; // Hit a ceiling
+                            break; // Hit a ceiling or a spike
                         }
                     }
                 }
@@ -467,15 +467,6 @@
 
             gameState.level = level;
 
-            // --- Reachability Analysis ---
-            const reachableSet = findReachableTiles(level, levelWidth, levelHeight, playerSpawnX, playerSpawnY);
-            const reachableTiles = Array.from(reachableSet).map(s => s.split(',').map(Number));
-
-            // If the reachable area is too small, the level is likely broken.
-            if (reachableTiles.length < (levelWidth * levelHeight) / 10) {
-                return generateDungeon();
-            }
-            
             // Set minimap dimensions
             minimapCanvas.width = levelWidth * MINIMAP_SCALE;
             minimapCanvas.height = levelHeight * MINIMAP_SCALE;
@@ -496,10 +487,17 @@
                 }
             }
 
+            // --- Reachability Analysis ---
+            // First pass: Find all spots reachable from spawn to place hazards on.
+            const initialReachableSet = findReachableTiles(level, levelWidth, levelHeight, playerSpawnX, playerSpawnY);
+            if (initialReachableSet.size < (levelWidth * levelHeight) / 10) {
+                return generateDungeon(); // Level is too fragmented or small.
+            }
+
             // Find all reachable ground tiles for placing enemies and spikes
-            const reachableGroundTiles = reachableTiles.filter(([x, y]) => 
-                y + 1 < levelHeight && level[y + 1][x] === 1
-            );
+            const reachableGroundTiles = Array.from(initialReachableSet)
+                .map(s => s.split(',').map(Number))
+                .filter(([x, y]) => y + 1 < levelHeight && level[y + 1][x] === 1);
             
             const candidateSpawns = reachableGroundTiles.filter(([x, y]) => {
                 const distance = Math.sqrt(Math.pow(x - playerSpawnX, 2) + Math.pow(y - playerSpawnY, 2));
@@ -518,6 +516,18 @@
                 return generateDungeon(); // Not enough safe spots, regenerate
             }
             
+            // Place spikes first, as they can block paths
+            gameState.spikes = [];
+            const spikeSpawns = candidateSpawns.splice(0, numSpikes);
+             spikeSpawns.forEach(([x, y]) => {
+                gameState.spikes.push({
+                    x: x * TILE_SIZE,
+                    y: (y + 1) * TILE_SIZE - 16,
+                    width: TILE_SIZE,
+                    height: 16
+                });
+            });
+
             // Place enemies
             gameState.enemies = [];
             const enemySpawns = candidateSpawns.splice(0, numEnemies);
@@ -531,22 +541,20 @@
                 });
             });
 
-            // Place spikes
-            gameState.spikes = [];
-            const spikeSpawns = candidateSpawns.splice(0, numSpikes);
-             spikeSpawns.forEach(([x, y]) => {
-                gameState.spikes.push({
-                    x: x * TILE_SIZE,
-                    y: (y + 1) * TILE_SIZE - 16,
-                    width: TILE_SIZE,
-                    height: 16
-                });
-            });
+            // Second pass: With spikes in place, find all truly reachable tiles for gems
+            const spikeLocations = new Set(gameState.spikes.map(s => {
+                const x = s.x / TILE_SIZE;
+                const y = Math.floor(s.y / TILE_SIZE);
+                return `${x},${y}`;
+            }));
+            const finalReachableSet = findReachableTiles(level, levelWidth, levelHeight, playerSpawnX, playerSpawnY, spikeLocations);
 
             // Place gems
             gameState.gems = [];
             const numGems = 10;
-            const gemCandidateTiles = reachableTiles.filter(([x, y]) => {
+            const gemCandidateTiles = Array.from(finalReachableSet)
+                .map(s => s.split(',').map(Number))
+                .filter(([x, y]) => {
                  // Ensure gems don't spawn in the same tile as a spike or enemy origin
                  return ![...enemySpawns, ...spikeSpawns].some(spawn => spawn[0] === x && spawn[1] === y);
             });
