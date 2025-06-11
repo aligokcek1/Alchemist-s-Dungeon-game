@@ -242,11 +242,43 @@
     </div>
     
     <script>
+        let generationAttempts = 0;
+        const MAX_GEN_ATTEMPTS = 20;
+
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         
         const minimapCanvas = document.getElementById('minimap');
         const minimapCtx = minimapCanvas.getContext('2d');
+
+        // Sound Manager
+        const soundManager = {
+            isMuted: false,
+            sounds: {
+                music: new Howl({
+                    src: ['assets/audio/music.mp3'],
+                    loop: true,
+                    volume: 0.2
+                }),
+                jump: new Howl({ src: ['assets/audio/jump.wav'], volume: 0.4 }),
+                land: new Howl({ src: ['assets/audio/land.ogg'], volume: 0.3 }),
+                gem: new Howl({ src: ['assets/audio/gem.ogg'], volume: 0.5 }),
+                hurt: new Howl({ src: ['assets/audio/hurt.ogg'], volume: 0.6 }),
+                win: new Howl({ src: ['assets/audio/win.mp3'], volume: 0.7 }),
+                gameOver: new Howl({ src: ['assets/audio/gameOver.mp3'], volume: 0.7 }),
+                reset: new Howl({ src: ['assets/audio/reset.ogg'], volume: 0.5 }),
+            },
+            play: function(soundName) {
+                if (!this.isMuted && this.sounds[soundName]) {
+                    this.sounds[soundName].play();
+                }
+            },
+            toggleMute: function() {
+                this.isMuted = !this.isMuted;
+                Howler.mute(this.isMuted);
+                document.getElementById('soundToggle').textContent = this.isMuted ? 'SOUND OFF' : 'SOUND ON';
+            }
+        };
 
         // Game constants
         const NATIVE_WIDTH = 800;
@@ -345,9 +377,6 @@
         }
 
         window.addEventListener('resize', resizeGame);
-
-        let generationAttempts = 0;
-        const MAX_GEN_ATTEMPTS = 20;
 
         function findReachableTiles(level, levelWidth, levelHeight, startX, startY) {
             const reachable = new Set();
@@ -908,6 +937,7 @@
             document.getElementById('healthFill').style.width = '100%';
             
             triggerScreenShake(20);
+            soundManager.play('reset');
             
             // Reset particles
             for (let i = 0; i < 20; i++) {
@@ -1092,6 +1122,10 @@
         gameLoop();
 
         document.getElementById('startGameBtn').addEventListener('click', () => {
+            // Unlock audio context on user interaction
+            if (Howler.ctx && Howler.ctx.state === 'suspended') {
+                Howler.ctx.resume();
+            }
             document.getElementById('startScreen').classList.add('hidden');
             gameState.status = 'playing';
             soundManager.play('music');
